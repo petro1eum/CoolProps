@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор теплоемкости веществ CoolProp</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="coolprop.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .mixture-component {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #e2e8f0;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f1f5f9;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-3xl font-bold text-center text-blue-700 mb-6">Калькулятор теплоемкости веществ CoolProp</h1>
+        
+        <div id="loading-status" class="mb-4 text-center">
+            <p>Загрузка библиотеки CoolProp... <span class="loading"></span></p>
+        </div>
+
+        <div id="app-content" class="hidden">
+            <!-- Tabs -->
+            <div class="mb-6">
+                <div class="flex border-b">
+                    <button id="tab-single" class="px-4 py-2 text-blue-600 font-medium border-b-2 border-blue-500">Одиночное вещество</button>
+                    <button id="tab-mixture-mass" class="px-4 py-2 text-gray-600 font-medium">Смесь (масс. %)</button>
+                    <button id="tab-mixture-volume" class="px-4 py-2 text-gray-600 font-medium">Смесь (объем. %)</button>
+                </div>
+            </div>
+            
+            <!-- Single Substance Tab -->
+            <div id="content-single" class="tab-content active">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Выберите вещество и параметры</h2>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Вещество:</label>
+                            <select id="fluid-select" class="w-full p-2 border border-gray-300 rounded-md">
+                                <option value="">Выберите вещество...</option>
+                                <!-- Опции будут добавлены через JavaScript -->
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Температура:</label>
+                            <div class="flex">
+                                <input type="number" id="temperature" class="w-full p-2 border border-gray-300 rounded-l-md" value="25">
+                                <select id="temp-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="C">°C</option>
+                                    <option value="K">K</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Давление:</label>
+                            <div class="flex">
+                                <input type="number" id="pressure" class="w-full p-2 border border-gray-300 rounded-l-md" value="101.325">
+                                <select id="pressure-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="kPa">кПа</option>
+                                    <option value="bar">бар</option>
+                                    <option value="MPa">МПа</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button id="calculate-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">Рассчитать</button>
+                    </div>
+                    
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Результаты расчета</h2>
+                        <div id="results" class="p-4 bg-gray-50 rounded-md min-h-[200px]">
+                            <p class="text-gray-500 italic">Результаты появятся здесь после расчета.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mixture by Mass Tab -->
+            <div id="content-mixture-mass" class="tab-content">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Создание смеси по массовому проценту</h2>
+                        
+                        <div id="mass-mixture-components" class="mb-4">
+                            <!-- Components will be added here -->
+                        </div>
+                        
+                        <div class="mb-4">
+                            <button id="add-mass-component-btn" class="bg-green-600 text-white py-1 px-3 rounded-md hover:bg-green-700 transition-colors text-sm">Добавить компонент</button>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Температура:</label>
+                            <div class="flex">
+                                <input type="number" id="mass-temperature" class="w-full p-2 border border-gray-300 rounded-l-md" value="25">
+                                <select id="mass-temp-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="C">°C</option>
+                                    <option value="K">K</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Давление:</label>
+                            <div class="flex">
+                                <input type="number" id="mass-pressure" class="w-full p-2 border border-gray-300 rounded-l-md" value="101.325">
+                                <select id="mass-pressure-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="kPa">кПа</option>
+                                    <option value="bar">бар</option>
+                                    <option value="MPa">МПа</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button id="calculate-mass-mixture-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">Рассчитать свойства смеси</button>
+                    </div>
+                    
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Результаты расчета смеси</h2>
+                        <div id="mass-mixture-results" class="p-4 bg-gray-50 rounded-md min-h-[200px]">
+                            <p class="text-gray-500 italic">Результаты появятся здесь после расчета.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mixture by Volume Tab -->
+            <div id="content-mixture-volume" class="tab-content">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Создание смеси по объемному проценту</h2>
+                        
+                        <div id="volume-mixture-components" class="mb-4">
+                            <!-- Components will be added here -->
+                        </div>
+                        
+                        <div class="mb-4">
+                            <button id="add-volume-component-btn" class="bg-green-600 text-white py-1 px-3 rounded-md hover:bg-green-700 transition-colors text-sm">Добавить компонент</button>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Температура:</label>
+                            <div class="flex">
+                                <input type="number" id="volume-temperature" class="w-full p-2 border border-gray-300 rounded-l-md" value="25">
+                                <select id="volume-temp-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="C">°C</option>
+                                    <option value="K">K</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Давление:</label>
+                            <div class="flex">
+                                <input type="number" id="volume-pressure" class="w-full p-2 border border-gray-300 rounded-l-md" value="101.325">
+                                <select id="volume-pressure-unit" class="p-2 border border-gray-300 rounded-r-md bg-gray-50">
+                                    <option value="kPa">кПа</option>
+                                    <option value="bar">бар</option>
+                                    <option value="MPa">МПа</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button id="calculate-volume-mixture-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">Рассчитать свойства смеси</button>
+                    </div>
+                    
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4">Результаты расчета смеси</h2>
+                        <div id="volume-mixture-results" class="p-4 bg-gray-50 rounded-md min-h-[200px]">
+                            <p class="text-gray-500 italic">Результаты появятся здесь после расчета.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 text-sm text-gray-600 border-t pt-4">
+            <p>Данное веб-приложение использует библиотеку <a href="http://www.coolprop.org/" class="text-blue-600 hover:underline" target="_blank">CoolProp</a> для расчета термодинамических свойств веществ.</p>
+            <p>Обратите внимание, что не все комбинации параметров могут быть допустимы для всех веществ. В случае ошибки попробуйте изменить параметры.</p>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let CP = null;
+        let fluidsList = [];
+        
+        // Initialize CoolProp
+        window.onload = function() {
+            console.log("window.onload triggered."); // DEBUG
+            // Try to initialize CoolProp
+            if (typeof createCoolPropModule !== 'undefined') {
+                console.log("createCoolPropModule found immediately."); // DEBUG
+                initCoolProp();
+            } else {
+                console.log("createCoolPropModule not found initially, setting timeout."); // DEBUG
+                // If the script is not loaded yet, wait for it
+                setTimeout(checkCoolPropLoaded, 100);
+            }
+        };
+        
+        function checkCoolPropLoaded() {
+            console.log("checkCoolPropLoaded called."); // DEBUG
+            if (typeof createCoolPropModule !== 'undefined') {
+                console.log("createCoolPropModule found after timeout."); // DEBUG
+                initCoolProp();
+            } else {
+                console.log("createCoolPropModule still not found, setting another timeout."); // DEBUG
+                setTimeout(checkCoolPropLoaded, 100);
+            }
+        }
+        
+        function initCoolProp() {
+            console.log("initCoolProp called."); // DEBUG
+            console.log("Attempting to call createCoolPropModule()..."); // DEBUG
+            createCoolPropModule().then(function(Module) {
+                console.log("createCoolPropModule() promise resolved."); // DEBUG
+                CP = Module;
+                console.log("CoolProp initialized successfully, CP object assigned."); // DEBUG
+                
+                // Get list of available fluids
+                try {
+                    console.log("Attempting to call CP.FluidsList()..."); // DEBUG
+                    const fluidString = CP.FluidsList();
+                    console.log("CP.FluidsList() executed successfully."); // DEBUG
+                    fluidsList = fluidString.split(',');
+                    console.log(`Found ${fluidsList.length} fluids.`); // DEBUG
+                    
+                    // Sort and populate fluid dropdown
+                    fluidsList.sort();
+                    const fluidSelect = document.getElementById('fluid-select');
+                    
+                    // Create fluid groups
+                    const groups = {
+                        'Хладагенты': fluidsList.filter(f => f.startsWith('R') && /\d/.test(f)),
+                        'Углеводороды': fluidsList.filter(f => /^(Methane|Ethane|Propane|Butane|Pentane|Hexane|Heptane|Octane|Nonane|Decane|Cyclo)/.test(f)),
+                        'Криогенные жидкости': ['Nitrogen', 'Oxygen', 'Hydrogen', 'Helium', 'Neon', 'Argon', 'Krypton'].filter(f => fluidsList.includes(f)),
+                        'Обычные вещества': ['Water', 'Air', 'CarbonDioxide', 'Ammonia'].filter(f => fluidsList.includes(f)),
+                    };
+                    
+                    // Add grouped options
+                    for (const [groupName, fluids] of Object.entries(groups)) {
+                        if (fluids.length > 0) {
+                            const group = document.createElement('optgroup');
+                            group.label = groupName;
+                            
+                            fluids.forEach(fluid => {
+                                const option = document.createElement('option');
+                                option.value = fluid;
+                                option.textContent = getFluidDisplayName(fluid);
+                                group.appendChild(option);
+                            });
+                            
+                            fluidSelect.appendChild(group);
+                        }
+                    }
+                    
+                    // Add "Other" group with remaining fluids
+                    const usedFluids = Object.values(groups).flat();
+                    const otherFluids = fluidsList.filter(f => !usedFluids.includes(f));
+                    
+                    if (otherFluids.length > 0) {
+                        const group = document.createElement('optgroup');
+                        group.label = 'Другие вещества';
+                        
+                        otherFluids.forEach(fluid => {
+                            const option = document.createElement('option');
+                            option.value = fluid;
+                            option.textContent = getFluidDisplayName(fluid);
+                            group.appendChild(option);
+                        });
+                        
+                        fluidSelect.appendChild(group);
+                    }
+                    
+                    // Initialize mixture components
+                    addMixtureComponent('mass');
+                    addMixtureComponent('volume');
+                    
+                    console.log("Populated dropdowns and added initial mixture components."); // DEBUG
+                    // Hide loading message and show app content
+                    console.log("Hiding loading status and showing app content..."); // DEBUG
+                    document.getElementById('loading-status').classList.add('hidden');
+                    document.getElementById('app-content').classList.remove('hidden');
+                    console.log("App content should now be visible."); // DEBUG
+                } catch (e) {
+                    console.error("Error initializing fluids list:", e); // DEBUG
+                    document.getElementById('loading-status').innerHTML = 
+                        `<p class="text-red-600">Ошибка при инициализации CoolProp: ${e.message}</p>`;
+                }
+            }).catch(function(error) {
+                console.error("Error loading CoolProp:", error); // DEBUG
+                document.getElementById('loading-status').innerHTML = 
+                    `<p class="text-red-600">Ошибка при загрузке CoolProp: ${error.message}</p>`;
+            });
+        }
+        
+        // Get readable fluid name
+        function getFluidDisplayName(fluidKey) {
+            const fluidNames = {
+                'Water': 'Вода (H₂O)',
+                'Air': 'Воздух',
+                'Nitrogen': 'Азот (N₂)',
+                'Oxygen': 'Кислород (O₂)',
+                'CarbonDioxide': 'Углекислый газ (CO₂)',
+                'Ammonia': 'Аммиак (NH₃)',
+                'R134a': 'R134a (Тетрафторэтан)',
+                'R22': 'R22 (Хлордифторметан)',
+                'R410A': 'R410A (Смесь R32/R125)',
+                'Propane': 'Пропан (C₃H₈)',
+                'Methane': 'Метан (CH₄)',
+                'Ethane': 'Этан (C₂H₆)',
+                'Hydrogen': 'Водород (H₂)',
+                'Helium': 'Гелий (He)'
+                // Add more as needed
+            };
+            
+            return fluidNames[fluidKey] || fluidKey;
+        }
+        
+        // Tab switching functionality
+        document.getElementById('tab-single').addEventListener('click', function() {
+            switchTab('single');
+        });
+        
+        document.getElementById('tab-mixture-mass').addEventListener('click', function() {
+            switchTab('mixture-mass');
+        });
+        
+        document.getElementById('tab-mixture-volume').addEventListener('click', function() {
+            switchTab('mixture-volume');
+        });
+        
+        function switchTab(tabId) {
+            // Update tab buttons
+            document.getElementById('tab-single').classList.remove('text-blue-600', 'border-blue-500');
+            document.getElementById('tab-mixture-mass').classList.remove('text-blue-600', 'border-blue-500');
+            document.getElementById('tab-mixture-volume').classList.remove('text-blue-600', 'border-blue-500');
+            
+            document.getElementById('tab-single').classList.add('text-gray-600');
+            document.getElementById('tab-mixture-mass').classList.add('text-gray-600');
+            document.getElementById('tab-mixture-volume').classList.add('text-gray-600');
+            
+            document.getElementById('tab-' + tabId).classList.remove('text-gray-600');
+            document.getElementById('tab-' + tabId).classList.add('text-blue-600', 'border-blue-500');
+            
+            // Update content visibility
+            document.getElementById('content-single').classList.remove('active');
+            document.getElementById('content-mixture-mass').classList.remove('active');
+            document.getElementById('content-mixture-volume').classList.remove('active');
+            
+            document.getElementById('content-' + tabId).classList.add('active');
+        }
+        
+        // Calculate single substance properties
+        document.getElementById('calculate-btn').addEventListener('click', function() {
+            if (!CP) {
+                alert('CoolProp еще не инициализирован. Пожалуйста, подождите...');
+                return;
+            }
+            
+            const fluidName = document.getElementById('fluid-select').value;
+            if (!fluidName) {
+                alert('Пожалуйста, выберите вещество');
+                return;
+            }
+            
+            let temperature = parseFloat(document.getElementById('temperature').value);
+            const tempUnit = document.getElementById('temp-unit').value;
+            if (tempUnit === 'C') {
+                temperature = temperature + 273.15; // Convert to Kelvin
+            }
+            
+            let pressure = parseFloat(document.getElementById('pressure').value);
+            const pressureUnit = document.getElementById('pressure-unit').value;
+            if (pressureUnit === 'bar') {
+                pressure = pressure * 100; // Convert to kPa
+            } else if (pressureUnit === 'MPa') {
+                pressure = pressure * 1000; // Convert to kPa
+            }
+            
+            try {
+                // Initialize the state with temperature and pressure
+                const state = new CP.State(fluidName, {T: temperature, P: pressure});
+                
+                // Format the results
+                let resultsHTML = `
+                <h3 class="font-semibold mb-3">Свойства вещества: ${getFluidDisplayName(fluidName)}</h3>
+                <table class="w-full mb-4">
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                        <th>Единицы</th>
+                    </tr>
+                    <tr>
+                        <td>Температура</td>
+                        <td>${(state.T - 273.15).toFixed(2)} / ${state.T.toFixed(2)}</td>
+                        <td>°C / K</td>
+                    </tr>
+                    <tr>
+                        <td>Давление</td>
+                        <td>${(state.P / 100).toFixed(4)}</td>
+                        <td>бар</td>
+                    </tr>
+                    <tr>
+                        <td>Плотность</td>
+                        <td>${state.rhomass.toFixed(4)}</td>
+                        <td>кг/м³</td>
+                    </tr>
+                    <tr>
+                        <td>Теплоемкость при пост. давлении (Cp)</td>
+                        <td>${state.cpmass.toFixed(4)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Теплоемкость при пост. объеме (Cv)</td>
+                        <td>${state.cvmass.toFixed(4)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Отношение теплоемкостей (Cp/Cv)</td>
+                        <td>${(state.cpmass / state.cvmass).toFixed(4)}</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>Динамическая вязкость</td>
+                        <td>${state.viscosity.toFixed(6)}</td>
+                        <td>Па·с</td>
+                    </tr>
+                    <tr>
+                        <td>Теплопроводность</td>
+                        <td>${state.conductivity.toFixed(6)}</td>
+                        <td>Вт/(м·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Энтальпия</td>
+                        <td>${state.hmass.toFixed(2)}</td>
+                        <td>Дж/кг</td>
+                    </tr>
+                    <tr>
+                        <td>Энтропия</td>
+                        <td>${state.smass.toFixed(2)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                </table>
+                <p class="text-sm text-gray-600">* Все расчеты выполнены с использованием библиотеки CoolProp.</p>
+                `;
+                
+                document.getElementById('results').innerHTML = resultsHTML;
+            } catch (e) {
+                console.error("Error calculating properties:", e);
+                document.getElementById('results').innerHTML = `
+                <p class="text-red-600">Ошибка при расчете свойств: ${e.message}</p>
+                <p class="text-sm">Возможно, выбранные параметры находятся вне допустимого диапазона для данного вещества.</p>
+                `;
+            }
+        });
+        
+        // Add mixture component
+        document.getElementById('add-mass-component-btn').addEventListener('click', function() {
+            addMixtureComponent('mass');
+        });
+        
+        document.getElementById('add-volume-component-btn').addEventListener('click', function() {
+            addMixtureComponent('volume');
+        });
+        
+        function addMixtureComponent(type) {
+            if (!fluidsList.length) {
+                alert('Список веществ еще не загружен. Пожалуйста, подождите...');
+                return;
+            }
+            
+            const container = document.getElementById(`${type}-mixture-components`);
+            const componentId = Date.now();
+            
+            const componentHTML = `
+            <div id="${type}-component-${componentId}" class="mixture-component">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="font-medium">Компонент</h4>
+                    <button class="text-red-600 hover:text-red-800" onclick="removeComponent('${type}', ${componentId})">Удалить</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Вещество:</label>
+                        <select id="${type}-fluid-${componentId}" class="w-full p-2 border border-gray-300 rounded-md">
+                            <option value="">Выберите вещество...</option>
+                            ${generateFluidOptions()}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Процент ${type === 'mass' ? 'массы' : 'объема'}:</label>
+                        <input type="number" id="${type}-percent-${componentId}" class="w-full p-2 border border-gray-300 rounded-md" min="0" max="100" value="50">
+                    </div>
+                </div>
+            </div>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', componentHTML);
+        }
+        
+        function generateFluidOptions() {
+            // Create groups for dropdown options
+            const groups = {
+                'Хладагенты': fluidsList.filter(f => f.startsWith('R') && /\d/.test(f)),
+                'Углеводороды': fluidsList.filter(f => /^(Methane|Ethane|Propane|Butane|Pentane|Hexane|Heptane|Octane|Nonane|Decane|Cyclo)/.test(f)),
+                'Криогенные жидкости': ['Nitrogen', 'Oxygen', 'Hydrogen', 'Helium', 'Neon', 'Argon', 'Krypton'].filter(f => fluidsList.includes(f)),
+                'Обычные вещества': ['Water', 'Air', 'CarbonDioxide', 'Ammonia'].filter(f => fluidsList.includes(f)),
+            };
+            
+            let optionsHTML = '';
+            
+            // Add grouped options
+            for (const [groupName, fluids] of Object.entries(groups)) {
+                if (fluids.length > 0) {
+                    optionsHTML += `<optgroup label="${groupName}">`;
+                    
+                    fluids.forEach(fluid => {
+                        optionsHTML += `<option value="${fluid}">${getFluidDisplayName(fluid)}</option>`;
+                    });
+                    
+                    optionsHTML += `</optgroup>`;
+                }
+            }
+            
+            // Add "Other" group with remaining fluids
+            const usedFluids = Object.values(groups).flat();
+            const otherFluids = fluidsList.filter(f => !usedFluids.includes(f));
+            
+            if (otherFluids.length > 0) {
+                optionsHTML += `<optgroup label="Другие вещества">`;
+                
+                otherFluids.forEach(fluid => {
+                    optionsHTML += `<option value="${fluid}">${getFluidDisplayName(fluid)}</option>`;
+                });
+                
+                optionsHTML += `</optgroup>`;
+            }
+            
+            return optionsHTML;
+        }
+        
+        // Remove component
+        window.removeComponent = function(type, id) {
+            const component = document.getElementById(`${type}-component-${id}`);
+            if (component) {
+                component.remove();
+            }
+        };
+        
+        // Calculate mixture properties
+        document.getElementById('calculate-mass-mixture-btn').addEventListener('click', function() {
+            calculateMixtureProperties('mass');
+        });
+        
+        document.getElementById('calculate-volume-mixture-btn').addEventListener('click', function() {
+            calculateMixtureProperties('volume');
+        });
+        
+        function calculateMixtureProperties(type) {
+            if (!CP) {
+                alert('CoolProp еще не инициализирован. Пожалуйста, подождите...');
+                return;
+            }
+            
+            // Get components
+            const componentsContainer = document.getElementById(`${type}-mixture-components`);
+            const componentDivs = componentsContainer.querySelectorAll('.mixture-component');
+            
+            if (componentDivs.length < 2) {
+                alert('Для создания смеси необходимо добавить не менее двух компонентов');
+                return;
+            }
+            
+            // Extract component data
+            const components = [];
+            let totalPercent = 0;
+            
+            for (const div of componentDivs) {
+                const id = div.id.split('-').pop();
+                const fluid = document.getElementById(`${type}-fluid-${id}`).value;
+                const percent = parseFloat(document.getElementById(`${type}-percent-${id}`).value);
+                
+                if (!fluid) {
+                    alert('Пожалуйста, выберите вещество для всех компонентов');
+                    return;
+                }
+                
+                if (isNaN(percent) || percent <= 0) {
+                    alert('Процентное содержание должно быть положительным числом');
+                    return;
+                }
+                
+                components.push({ fluid, percent });
+                totalPercent += percent;
+            }
+            
+            // Normalize percentages to sum to 100%
+            components.forEach(comp => {
+                comp.fraction = comp.percent / totalPercent;
+            });
+            
+            // Get temperature and pressure
+            let temperature = parseFloat(document.getElementById(`${type}-temperature`).value);
+            const tempUnit = document.getElementById(`${type}-temp-unit`).value;
+            if (tempUnit === 'C') {
+                temperature = temperature + 273.15; // Convert to Kelvin
+            }
+            
+            let pressure = parseFloat(document.getElementById(`${type}-pressure`).value);
+            const pressureUnit = document.getElementById(`${type}-pressure-unit`).value;
+            if (pressureUnit === 'bar') {
+                pressure = pressure * 100; // Convert to kPa
+            } else if (pressureUnit === 'MPa') {
+                pressure = pressure * 1000; // Convert to kPa
+            }
+            
+            try {
+                // For CoolProp, we need to create a string like "HEOS::R32[0.7]&R125[0.3]"
+                let mixtureStr = "HEOS::";
+                components.forEach((comp, index) => {
+                    if (index > 0) mixtureStr += "&";
+                    mixtureStr += `${comp.fluid}[${comp.fraction.toFixed(6)}]`;
+                });
+                
+                // Initialize the state with temperature and pressure
+                console.log("Creating mixture:", mixtureStr);
+                const state = new CP.State(mixtureStr, {T: temperature, P: pressure});
+                
+                // Format the results
+                let resultsHTML = `
+                <h3 class="font-semibold mb-3">Свойства смеси (${type === 'mass' ? 'по массе' : 'по объему'})</h3>
+                
+                <h4 class="font-medium mt-3 mb-2">Состав смеси:</h4>
+                <table class="w-full mb-4">
+                    <tr>
+                        <th>Вещество</th>
+                        <th>Процент</th>
+                        <th>Доля</th>
+                    </tr>
+                `;
+                
+                components.forEach(comp => {
+                    resultsHTML += `
+                    <tr>
+                        <td>${getFluidDisplayName(comp.fluid)}</td>
+                        <td>${comp.percent.toFixed(2)}%</td>
+                        <td>${comp.fraction.toFixed(4)}</td>
+                    </tr>
+                    `;
+                });
+                
+                resultsHTML += `
+                </table>
+                
+                <h4 class="font-medium mt-3 mb-2">Термодинамические свойства:</h4>
+                <table class="w-full mb-4">
+                    <tr>
+                        <th>Параметр</th>
+                        <th>Значение</th>
+                        <th>Единицы</th>
+                    </tr>
+                    <tr>
+                        <td>Температура</td>
+                        <td>${(state.T - 273.15).toFixed(2)} / ${state.T.toFixed(2)}</td>
+                        <td>°C / K</td>
+                    </tr>
+                    <tr>
+                        <td>Давление</td>
+                        <td>${(state.P / 100).toFixed(4)}</td>
+                        <td>бар</td>
+                    </tr>
+                    <tr>
+                        <td>Плотность</td>
+                        <td>${state.rhomass.toFixed(4)}</td>
+                        <td>кг/м³</td>
+                    </tr>
+                    <tr>
+                        <td>Теплоемкость при пост. давлении (Cp)</td>
+                        <td>${state.cpmass.toFixed(4)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Теплоемкость при пост. объеме (Cv)</td>
+                        <td>${state.cvmass.toFixed(4)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Отношение теплоемкостей (Cp/Cv)</td>
+                        <td>${(state.cpmass / state.cvmass).toFixed(4)}</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td>Динамическая вязкость</td>
+                        <td>${state.viscosity.toFixed(6)}</td>
+                        <td>Па·с</td>
+                    </tr>
+                    <tr>
+                        <td>Теплопроводность</td>
+                        <td>${state.conductivity.toFixed(6)}</td>
+                        <td>Вт/(м·K)</td>
+                    </tr>
+                    <tr>
+                        <td>Энтальпия</td>
+                        <td>${state.hmass.toFixed(2)}</td>
+                        <td>Дж/кг</td>
+                    </tr>
+                    <tr>
+                        <td>Энтропия</td>
+                        <td>${state.smass.toFixed(2)}</td>
+                        <td>Дж/(кг·K)</td>
+                    </tr>
+                </table>
+                <p class="text-sm text-gray-600">* Все расчеты выполнены с использованием библиотеки CoolProp.</p>
+                `;
+                
+                document.getElementById(`${type}-mixture-results`).innerHTML = resultsHTML;
+            } catch (e) {
+                console.error("Error calculating mixture properties:", e);
+                document.getElementById(`${type}-mixture-results`).innerHTML = `
+                <p class="text-red-600">Ошибка при расчете свойств смеси: ${e.message}</p>
+                <p class="text-sm">Возможно, выбранные компоненты несовместимы или параметры находятся вне допустимого диапазона.</p>
+                <p class="text-sm">Не все комбинации веществ поддерживаются в CoolProp. Рекомендуется использовать стандартные смеси хладагентов.</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
