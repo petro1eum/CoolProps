@@ -1,96 +1,664 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="ru">
 <head>
-<meta charset="utf-8" />
-<title>CoolProp Javascript example</title>
-<link rel="stylesheet" href="http://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css" />
-<script src="http://code.jquery.com/jquery-1.11.0.min.js"></script>
-<script src="http://code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
-
-<script src="http://code.jquery.com/ui/1.10.4/jquery-ui.js"></script>
-<script>
-//<link rel="stylesheet" href="/resources/demos/style.css" />
-</script>
-
-<!-- (Problems with CORS) script src="http://www.coolprop.sourceforge.net/jscript/coolprop.js"></script -->
-<script src="coolprop.js"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор теплофизических свойств CoolProp</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    
+    <script>
+        // Настройка модуля Emscripten для правильного поиска файла WASM
+        var Module = {
+            locateFile: function(path, prefix) {
+                if (path.endsWith('.wasm')) {
+                    return 'https://cdn.jsdelivr.net/gh/petro1eum/CoolProps@main/coolprop.wasm';
+                }
+                return prefix + path;
+            },
+            onRuntimeInitialized: function() {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('app-content').classList.remove('hidden');
+                initializeFluidList();
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/gh/petro1eum/CoolProps@main/coolprop.js"></script>
 </head>
 
-<body>
-    <div class="ui-widget">
-        <label>FluidName: </label>
-        <select id="FluidName">
-            <option>Nitrogen</option>
-            <option>R134a</option>
-        </select>
-    </div>
-    <div class="ui-widget">
-        <label>Input #1: </label>
-        <select id="Name1">
-            <option value="">Select one...</option>
-            <option value="Pressure">Pressure [Pa]</option>
-            <option value="Temperature">Temperature [K]</option>
-            <option value="Density">Density [kg/m&#179;]</option>
-        </select>
-        <input id ='Value1'></input>
-    </div>
-    <div class="ui-widget">
-        <label>Input #2: </label>
-        <select id="Name2">
-            <option value="">Select one...</option>
-            <option value="Pressure">Pressure [Pa]</option>
-            <option value="Temperature">Temperature [K]</option>
-            <option value="Density">Density [kg/m&#179;]</option>
-        </select>
-        <input id ='Value2'></input>
-    </div>
-    
-    <button id="calc">Calculate</button>
-    <div  class="ui-widget"> 
-    <label>Output: </label>
-    </div>
-    <div class="ui-widget">
-        <p id="output">
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Калькулятор теплофизических свойств веществ</h1>
+            <p class="text-gray-600 mt-2">Использует библиотеку CoolProp для точных расчетов</p>
+        </header>
+
+        <!-- Индикатор загрузки -->
+        <div id="loading" class="flex flex-col items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-lg text-gray-700">Загрузка библиотеки CoolProp...</p>
+        </div>
+
+        <div id="app-content" class="hidden">
+            <!-- Переключатель режимов -->
+            <div class="mb-6 flex justify-center">
+                <div class="inline-flex rounded-md shadow-sm" role="group">
+                    <button id="btn-pure" type="button" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-l-lg hover:bg-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:bg-blue-700">
+                        Чистые вещества
+                    </button>
+                    <button id="btn-mixture" type="button" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700">
+                        Смеси веществ
+                    </button>
+                </div>
+            </div>
+
+            <!-- Контейнер для чистых веществ -->
+            <div id="pure-substances" class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <div class="mb-4">
+                            <label for="fluid-select" class="block text-sm font-medium text-gray-700 mb-1">Вещество:</label>
+                            <select id="fluid-select" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"></select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="input1-name" class="block text-sm font-medium text-gray-700 mb-1">Параметр 1:</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="input1-name" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Выберите параметр...</option>
+                                    <option value="T">Температура [K]</option>
+                                    <option value="P">Давление [Па]</option>
+                                    <option value="D">Плотность [кг/м³]</option>
+                                    <option value="H">Энтальпия [Дж/кг]</option>
+                                    <option value="S">Энтропия [Дж/кг/K]</option>
+                                    <option value="Q">Качество пара [0-1]</option>
+                                </select>
+                                <input id="input1-value" type="number" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Значение">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="input2-name" class="block text-sm font-medium text-gray-700 mb-1">Параметр 2:</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="input2-name" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Выберите параметр...</option>
+                                    <option value="T">Температура [K]</option>
+                                    <option value="P">Давление [Па]</option>
+                                    <option value="D">Плотность [кг/м³]</option>
+                                    <option value="H">Энтальпия [Дж/кг]</option>
+                                    <option value="S">Энтропия [Дж/кг/K]</option>
+                                    <option value="Q">Качество пара [0-1]</option>
+                                </select>
+                                <input id="input2-value" type="number" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Значение">
+                            </div>
+                        </div>
+                        
+                        <button id="calculate-pure" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Рассчитать
+                        </button>
+                    </div>
+                    
+                    <div id="pure-results" class="bg-gray-50 p-4 rounded-md">
+                        <h3 class="text-lg font-medium text-gray-900 mb-3">Результаты расчета:</h3>
+                        <div id="pure-results-content" class="grid grid-cols-2 gap-y-2">
+                            <div class="text-gray-600">Температура:</div><div id="result-T" class="font-medium">-</div>
+                            <div class="text-gray-600">Давление:</div><div id="result-P" class="font-medium">-</div>
+                            <div class="text-gray-600">Плотность:</div><div id="result-D" class="font-medium">-</div>
+                            <div class="text-gray-600">Энтальпия:</div><div id="result-H" class="font-medium">-</div>
+                            <div class="text-gray-600">Энтропия:</div><div id="result-S" class="font-medium">-</div>
+                            <div class="text-gray-600 font-semibold">Теплоемкость (Cp):</div><div id="result-C" class="font-semibold">-</div>
+                            <div class="text-gray-600">Теплоемкость (Cv):</div><div id="result-O" class="font-medium">-</div>
+                            <div class="text-gray-600">Отношение Cp/Cv:</div><div id="result-ratio" class="font-medium">-</div>
+                            <div class="text-gray-600">Скорость звука:</div><div id="result-A" class="font-medium">-</div>
+                            <div class="text-gray-600">Молярная масса:</div><div id="result-M" class="font-medium">-</div>
+                            <div class="text-gray-600">Фаза:</div><div id="result-phase" class="font-medium">-</div>
+                            <div class="text-gray-600">Вязкость:</div><div id="result-V" class="font-medium">-</div>
+                            <div class="text-gray-600">Теплопроводность:</div><div id="result-L" class="font-medium">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Контейнер для смесей веществ (скрыт по умолчанию) -->
+            <div id="mixture-substances" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Тип смешивания:</label>
+                    <div class="flex space-x-4">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="mixture-type" value="mass" class="form-radio h-4 w-4 text-blue-600" checked>
+                            <span class="ml-2">По массовым долям</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="mixture-type" value="volume" class="form-radio h-4 w-4 text-blue-600">
+                            <span class="ml-2">По объемным долям</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-sm font-medium text-gray-700">Компоненты смеси:</label>
+                        <button id="add-component" class="py-1 px-3 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Добавить компонент
+                        </button>
+                    </div>
+                    <div id="mixture-components" class="space-y-3">
+                        <!-- Компоненты будут добавляться сюда -->
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 mt-6">
+                    <div>
+                        <div class="mb-4">
+                            <label for="mixture-input1-name" class="block text-sm font-medium text-gray-700 mb-1">Параметр 1:</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="mixture-input1-name" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Выберите параметр...</option>
+                                    <option value="T">Температура [K]</option>
+                                    <option value="P">Давление [Па]</option>
+                                </select>
+                                <input id="mixture-input1-value" type="number" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Значение">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="mixture-input2-name" class="block text-sm font-medium text-gray-700 mb-1">Параметр 2:</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="mixture-input2-name" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Выберите параметр...</option>
+                                    <option value="T">Температура [K]</option>
+                                    <option value="P">Давление [Па]</option>
+                                </select>
+                                <input id="mixture-input2-value" type="number" class="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Значение">
+                            </div>
+                        </div>
+                        
+                        <button id="calculate-mixture" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Рассчитать свойства смеси
+                        </button>
+                    </div>
+                    
+                    <div id="mixture-results" class="bg-gray-50 p-4 rounded-md">
+                        <h3 class="text-lg font-medium text-gray-900 mb-3">Результаты расчета смеси:</h3>
+                        <div id="mixture-composition" class="mb-3 p-2 bg-white rounded-md">
+                            <h4 class="text-sm font-medium text-gray-700 mb-1">Состав смеси:</h4>
+                            <div id="mixture-composition-content" class="text-sm">
+                                <!-- Состав смеси будет здесь -->
+                            </div>
+                        </div>
+                        <div id="mixture-results-content" class="grid grid-cols-2 gap-y-2">
+                            <div class="text-gray-600">Температура:</div><div id="mixture-result-T" class="font-medium">-</div>
+                            <div class="text-gray-600">Давление:</div><div id="mixture-result-P" class="font-medium">-</div>
+                            <div class="text-gray-600">Плотность:</div><div id="mixture-result-D" class="font-medium">-</div>
+                            <div class="text-gray-600">Молярная масса:</div><div id="mixture-result-M" class="font-medium">-</div>
+                            <div class="text-gray-600 font-semibold">Теплоемкость (Cp):</div><div id="mixture-result-C" class="font-semibold">-</div>
+                            <div class="text-gray-600">Теплоемкость (Cv):</div><div id="mixture-result-O" class="font-medium">-</div>
+                            <div class="text-gray-600">Отношение Cp/Cv:</div><div id="mixture-result-ratio" class="font-medium">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Информация о приложении -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-bold text-gray-800 mb-3">О приложении</h2>
+                <p class="text-gray-700 mb-3">
+                    Данное приложение использует библиотеку CoolProp для расчета теплофизических свойств веществ и их смесей.
+                    Вы можете рассчитать теплоемкость и другие свойства как для чистых веществ, так и для смесей с заданными массовыми или объемными долями компонентов.
+                </p>
+                <h3 class="text-lg font-medium text-gray-800 mb-2">Особенности расчета:</h3>
+                <ul class="list-disc list-inside text-gray-700 mb-3">
+                    <li>Удельная теплоемкость при постоянном давлении (Cp) и при постоянном объеме (Cv)</li>
+                    <li>Термодинамические свойства (T, P, ρ, h, s) при заданных условиях</li>
+                    <li>Расчет смесей веществ по массовому или объемному соотношению</li>
+                    <li>Более 100 веществ из базы данных CoolProp</li>
+                </ul>
+                <p class="text-gray-700 mb-1">
+                    Библиотека CoolProp загружается из репозитория:
+                </p>
+                <a href="https://github.com/petro1eum/CoolProps/" class="text-blue-600 hover:underline" target="_blank">
+                    github.com/petro1eum/CoolProps
+                </a>
+            </div>
+        </div>
     </div>
 
     <script>
-    function text2key(text)
-    {
-        if (text == 'Pressure [Pa]')
-            return 'P';
-        else if (text == 'Temperature [K]')
-            return 'T';
-        else if (text == 'Density [kg/m&#179;]')
-            return 'D';
-    }
-    //using jQuery
-    $('#calc').click( function() {
-        var name = $('#FluidName :selected').text()
-        var key1 = text2key($('#Name1 :selected').text())
-        var key2 = text2key($('#Name2 :selected').text())
-        var val1 = parseFloat($('#Value1').val())
-        var val2 = parseFloat($('#Value2').val())
+        let fluidList = [];
+        let mixtureComponents = 0;
         
-        var T = Module.PropsSI('T', key1, val1, key2, val2, name)
-        var rho = Module.PropsSI('D', key1, val1, key2, val2, name)
-        var p = Module.PropsSI('P', key1, val1, key2, val2, name)
-        var s = Module.PropsSI('S', key1, val1, key2, val2, name)
-        var h = Module.PropsSI('H', key1, val1, key2, val2, name)
-        var cp = Module.PropsSI('C', key1, val1, key2, val2, name)
+        // Инициализация списка веществ
+        function initializeFluidList() {
+            try {
+                const rawList = Module.get_global_param_string("FluidsList").split(',');
+                fluidList = rawList.map(fluid => ({ 
+                    id: fluid.trim(), 
+                    name: getFluidRussianName(fluid.trim()) 
+                }));
+                
+                // Сортировка по русским названиям
+                fluidList.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                
+                // Заполнение выпадающего списка
+                const select = document.getElementById('fluid-select');
+                fluidList.forEach(fluid => {
+                    const option = document.createElement('option');
+                    option.value = fluid.id;
+                    option.textContent = `${fluid.name} (${fluid.id})`;
+                    select.appendChild(option);
+                });
+                
+                // Добавление первого компонента смеси
+                addMixtureComponent();
+            } catch (error) {
+                console.error("Ошибка при инициализации списка веществ:", error);
+                document.getElementById('fluid-select').innerHTML = 
+                    '<option value="">Ошибка загрузки списка веществ</option>';
+            }
+        }
         
-        text = ''
-        text += 'T = ' + T + ' K\n' + '<br>'
-        text += 'rho = ' + rho + ' kg/m&#179; <br>'
-        text += 'p = ' + p + ' Pa<br>'
-        text += 's = ' + s + ' J/kg/K<br>'
-        text += 'h = ' + h + ' J/kg<br>'
-        text += 'cp = ' + cp + ' J/kg/K<br>'
+        // Получение русского названия вещества
+        function getFluidRussianName(fluidId) {
+            const russianNames = {
+                "Water": "Вода",
+                "Nitrogen": "Азот",
+                "Oxygen": "Кислород",
+                "Argon": "Аргон",
+                "Air": "Воздух",
+                "Hydrogen": "Водород",
+                "Helium": "Гелий",
+                "Ammonia": "Аммиак",
+                "CarbonDioxide": "Углекислый газ",
+                "CarbonMonoxide": "Угарный газ",
+                "Methane": "Метан",
+                "Ethane": "Этан",
+                "Propane": "Пропан",
+                "Butane": "Бутан",
+                "Pentane": "Пентан",
+                "Hexane": "Гексан",
+                "Ethylene": "Этилен",
+                "Propylene": "Пропилен",
+                "R134a": "Хладагент R134a",
+                "R22": "Хладагент R22",
+                "R410A": "Хладагент R410A",
+                "R407C": "Хладагент R407C",
+                "R404A": "Хладагент R404A",
+                "R717": "Аммиак (R717)",
+                "R744": "Углекислый газ (R744)",
+                "Acetone": "Ацетон",
+                "Ethanol": "Этанол",
+                "Methanol": "Метанол",
+                "Benzene": "Бензол",
+                "Toluene": "Толуол",
+                "n-Octane": "н-Октан",
+                "D4": "Октаметилциклотетрасилоксан"
+                // Можно добавить больше русских названий
+            };
+            
+            return russianNames[fluidId] || fluidId;
+        }
         
-        $( "#output" ).html( text);
+        // Получение фазы вещества в виде текста
+        function getPhaseText(phaseNumber) {
+            const phases = {
+                0: "Неизвестное состояние",
+                1: "Жидкость",
+                2: "Пар",
+                3: "Сверхкритическая жидкость",
+                4: "Сверхкритический газ",
+                5: "Сверхкритическое состояние",
+                6: "Двухфазное состояние",
+                7: "Равновесное состояние",
+                8: "Газ",
+                9: "Сжатая жидкость"
+            };
+            return phases[phaseNumber] || "Неизвестная фаза";
+        }
         
-    });
+        // Расчет свойств чистого вещества
+        function calculatePureProperties() {
+            const fluidName = document.getElementById('fluid-select').value;
+            const input1Name = document.getElementById('input1-name').value;
+            const input1Value = parseFloat(document.getElementById('input1-value').value);
+            const input2Name = document.getElementById('input2-name').value;
+            const input2Value = parseFloat(document.getElementById('input2-value').value);
+            
+            if (!fluidName || !input1Name || isNaN(input1Value) || !input2Name || isNaN(input2Value)) {
+                alert("Пожалуйста, заполните все поля корректно.");
+                return;
+            }
+            
+            try {
+                // Расчет основных свойств
+                const T = Module.PropsSI('T', input1Name, input1Value, input2Name, input2Value, fluidName);
+                const P = Module.PropsSI('P', input1Name, input1Value, input2Name, input2Value, fluidName);
+                const D = Module.PropsSI('D', input1Name, input1Value, input2Name, input2Value, fluidName);
+                const H = Module.PropsSI('H', input1Name, input1Value, input2Name, input2Value, fluidName);
+                const S = Module.PropsSI('S', input1Name, input1Value, input2Name, input2Value, fluidName);
+                const C = Module.PropsSI('C', input1Name, input1Value, input2Name, input2Value, fluidName);
+                
+                // Дополнительные свойства
+                let O, M, A, phase, V, L;
+                try { O = Module.PropsSI('O', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { O = NaN; }
+                
+                try { M = Module.PropsSI('M', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { M = NaN; }
+                
+                try { A = Module.PropsSI('A', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { A = NaN; }
+                
+                try { phase = Module.PropsSI('Phase', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { phase = NaN; }
+                
+                try { V = Module.PropsSI('V', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { V = NaN; }
+                
+                try { L = Module.PropsSI('L', input1Name, input1Value, input2Name, input2Value, fluidName); } 
+                catch(e) { L = NaN; }
+                
+                // Отношение Cp/Cv
+                const ratio = !isNaN(O) && O !== 0 ? C / O : NaN;
+                
+                // Отображение результатов
+                document.getElementById('result-T').textContent = isNaN(T) ? "Н/Д" : T.toFixed(2) + " K";
+                document.getElementById('result-P').textContent = isNaN(P) ? "Н/Д" : (P < 1000 ? P.toFixed(2) : (P / 1000).toFixed(2) + " кПа");
+                document.getElementById('result-D').textContent = isNaN(D) ? "Н/Д" : D.toFixed(4) + " кг/м³";
+                document.getElementById('result-H').textContent = isNaN(H) ? "Н/Д" : H.toFixed(2) + " Дж/кг";
+                document.getElementById('result-S').textContent = isNaN(S) ? "Н/Д" : S.toFixed(2) + " Дж/(кг·K)";
+                document.getElementById('result-C').textContent = isNaN(C) ? "Н/Д" : C.toFixed(2) + " Дж/(кг·K)";
+                document.getElementById('result-O').textContent = isNaN(O) ? "Н/Д" : O.toFixed(2) + " Дж/(кг·K)";
+                document.getElementById('result-ratio').textContent = isNaN(ratio) ? "Н/Д" : ratio.toFixed(4);
+                document.getElementById('result-A').textContent = isNaN(A) ? "Н/Д" : A.toFixed(2) + " м/с";
+                document.getElementById('result-M').textContent = isNaN(M) ? "Н/Д" : M.toFixed(6) + " кг/моль";
+                document.getElementById('result-phase').textContent = isNaN(phase) ? "Н/Д" : getPhaseText(phase);
+                document.getElementById('result-V').textContent = isNaN(V) ? "Н/Д" : (V * 1000).toFixed(6) + " мПа·с";
+                document.getElementById('result-L').textContent = isNaN(L) ? "Н/Д" : L.toFixed(4) + " Вт/(м·K)";
+                
+            } catch (error) {
+                console.error("Ошибка при расчете:", error);
+                alert("Произошла ошибка при расчете. Возможно, указанные параметры находятся вне допустимого диапазона.");
+            }
+        }
+        
+        // Добавление компонента смеси
+        function addMixtureComponent() {
+            if (mixtureComponents >= 5) {
+                alert("Максимальное количество компонентов - 5");
+                return;
+            }
+            
+            mixtureComponents++;
+            const componentId = mixtureComponents;
+            const containerDiv = document.createElement('div');
+            containerDiv.id = `component-${componentId}`;
+            containerDiv.className = 'grid grid-cols-8 gap-2 items-center';
+            
+            // Создание выпадающего списка для вещества
+            const fluidSelect = document.createElement('select');
+            fluidSelect.id = `mixture-fluid-${componentId}`;
+            fluidSelect.className = 'col-span-3 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500';
+            
+            // Добавление опций в выпадающий список
+            fluidList.forEach(fluid => {
+                const option = document.createElement('option');
+                option.value = fluid.id;
+                option.textContent = `${fluid.name} (${fluid.id})`;
+                fluidSelect.appendChild(option);
+            });
+            
+            // Создание поля ввода для процентного содержания
+            const percentInput = document.createElement('input');
+            percentInput.type = 'number';
+            percentInput.id = `mixture-percent-${componentId}`;
+            percentInput.className = 'col-span-2 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500';
+            percentInput.placeholder = 'Доля %';
+            percentInput.min = '0';
+            percentInput.max = '100';
+            percentInput.value = mixtureComponents === 1 ? '100' : '0';
+            
+            // Создание метки с процентом
+            const percentLabel = document.createElement('div');
+            percentLabel.className = 'col-span-1 text-sm text-gray-700';
+            percentLabel.textContent = '%';
+            
+            // Кнопка удаления
+            const removeButton = document.createElement('button');
+            removeButton.className = 'col-span-2 py-1 px-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2';
+            removeButton.textContent = 'Удалить';
+            removeButton.onclick = function() {
+                document.getElementById(`component-${componentId}`).remove();
+                mixtureComponents--;
+                recalculatePercentages();
+            };
+            
+            // Изменение процента вызывает пересчет
+            percentInput.onchange = recalculatePercentages;
+            
+            // Добавление всех элементов в контейнер
+            containerDiv.appendChild(fluidSelect);
+            containerDiv.appendChild(percentInput);
+            containerDiv.appendChild(percentLabel);
+            containerDiv.appendChild(removeButton);
+            
+            // Добавление контейнера на страницу
+            document.getElementById('mixture-components').appendChild(containerDiv);
+        }
+        
+        // Пересчет процентных долей компонентов
+        function recalculatePercentages() {
+            const mixtureType = document.querySelector('input[name="mixture-type"]:checked').value;
+            let sumPercent = 0;
+            
+            // Сбор всех компонентов
+            const componentDivs = document.querySelectorAll('[id^="component-"]');
+            const components = [];
+            
+            componentDivs.forEach(div => {
+                const id = div.id.split('-')[1];
+                const percent = parseFloat(document.getElementById(`mixture-percent-${id}`).value) || 0;
+                components.push({ id, percent });
+                sumPercent += percent;
+            });
+            
+            // Если сумма не равна 100%, корректируем последний компонент
+            if (components.length > 0 && sumPercent !== 0 && sumPercent !== 100) {
+                const lastComponent = components[components.length - 1];
+                const newPercent = 100 - (sumPercent - lastComponent.percent);
+                document.getElementById(`mixture-percent-${lastComponent.id}`).value = Math.max(0, newPercent).toFixed(1);
+            }
+            
+            // Обновление отображения состава смеси
+            updateMixtureComposition();
+        }
+        
+        // Обновление отображения состава смеси
+        function updateMixtureComposition() {
+            const componentDivs = document.querySelectorAll('[id^="component-"]');
+            const mixtureType = document.querySelector('input[name="mixture-type"]:checked').value;
+            let composition = '';
+            
+            componentDivs.forEach(div => {
+                const id = div.id.split('-')[1];
+                const fluidSelect = document.getElementById(`mixture-fluid-${id}`);
+                const fluidId = fluidSelect.value;
+                const fluidName = fluidSelect.options[fluidSelect.selectedIndex].text;
+                const percent = parseFloat(document.getElementById(`mixture-percent-${id}`).value) || 0;
+                
+                if (percent > 0) {
+                    composition += `<div>${fluidName}: <span class="font-medium">${percent}%</span></div>`;
+                }
+            });
+            
+            document.getElementById('mixture-composition-content').innerHTML = composition || 
+                '<div class="text-gray-500">Добавьте компоненты и укажите их доли</div>';
+        }
+        
+        // Расчет свойств смеси
+        function calculateMixtureProperties() {
+            const input1Name = document.getElementById('mixture-input1-name').value;
+            const input1Value = parseFloat(document.getElementById('mixture-input1-value').value);
+            const input2Name = document.getElementById('mixture-input2-name').value;
+            const input2Value = parseFloat(document.getElementById('mixture-input2-value').value);
+            const mixtureType = document.querySelector('input[name="mixture-type"]:checked').value;
+            
+            if (!input1Name || isNaN(input1Value) || !input2Name || isNaN(input2Value)) {
+                alert("Пожалуйста, заполните параметры состояния корректно.");
+                return;
+            }
+            
+            // Сбор всех компонентов с ненулевой долей
+            const componentDivs = document.querySelectorAll('[id^="component-"]');
+            const components = [];
+            
+            componentDivs.forEach(div => {
+                const id = div.id.split('-')[1];
+                const fluidId = document.getElementById(`mixture-fluid-${id}`).value;
+                const percent = parseFloat(document.getElementById(`mixture-percent-${id}`).value) || 0;
+                
+                if (percent > 0) {
+                    components.push({ fluidId, percent });
+                }
+            });
+            
+            if (components.length === 0) {
+                alert("Добавьте хотя бы один компонент с ненулевой долей.");
+                return;
+            }
+            
+            try {
+                // Расчет средневзвешенных свойств смеси
+                let T, P, D, H, S, C, O, M;
+                
+                // Если указана только одна компонента, считаем свойства напрямую
+                if (components.length === 1) {
+                    const component = components[0];
+                    T = Module.PropsSI('T', input1Name, input1Value, input2Name, input2Value, component.fluidId);
+                    P = Module.PropsSI('P', input1Name, input1Value, input2Name, input2Value, component.fluidId);
+                    D = Module.PropsSI('D', input1Name, input1Value, input2Name, input2Value, component.fluidId);
+                    try { C = Module.PropsSI('C', input1Name, input1Value, input2Name, input2Value, component.fluidId); } 
+                    catch(e) { C = NaN; }
+                    try { O = Module.PropsSI('O', input1Name, input1Value, input2Name, input2Value, component.fluidId); } 
+                    catch(e) { O = NaN; }
+                    try { M = Module.PropsSI('M', input1Name, input1Value, input2Name, input2Value, component.fluidId); } 
+                    catch(e) { M = NaN; }
+                } else {
+                    // Для смеси рассчитываем средневзвешенные значения
+                    let sumWeightedD = 0;
+                    let sumWeightedC = 0;
+                    let sumWeightedO = 0;
+                    let sumWeightedM = 0;
+                    let sumWeights = 0;
+                    
+                    // Определяем значения T и P, которые одинаковы для всех компонентов
+                    T = input1Name === 'T' ? input1Value : (input2Name === 'T' ? input2Value : null);
+                    P = input1Name === 'P' ? input1Value : (input2Name === 'P' ? input2Value : null);
+                    
+                    if (T === null || P === null) {
+                        alert("Для смесей необходимо указать температуру и давление.");
+                        return;
+                    }
+                    
+                    // Расчет для каждого компонента
+                    for (const component of components) {
+                        // Получаем свойства компонента
+                        const componentD = Module.PropsSI('D', 'T', T, 'P', P, component.fluidId);
+                        let componentC, componentO, componentM;
+                        
+                        try { componentC = Module.PropsSI('C', 'T', T, 'P', P, component.fluidId); } 
+                        catch(e) { componentC = NaN; }
+                        
+                        try { componentO = Module.PropsSI('O', 'T', T, 'P', P, component.fluidId); } 
+                        catch(e) { componentO = NaN; }
+                        
+                        try { componentM = Module.PropsSI('M', 'T', T, 'P', P, component.fluidId); } 
+                        catch(e) { componentM = NaN; }
+                        
+                        // Расчет весов в зависимости от типа смешивания
+                        let weight;
+                        if (mixtureType === 'mass') {
+                            weight = component.percent / 100;
+                        } else { // volume
+                            // Для объемного смешивания учитываем плотность
+                            const volumeRatio = component.percent / 100;
+                            weight = volumeRatio * componentD;
+                            sumWeights += weight;
+                        }
+                        
+                        // Накопление средневзвешенных значений
+                        sumWeightedD += weight * componentD;
+                        if (!isNaN(componentC)) sumWeightedC += weight * componentC;
+                        if (!isNaN(componentO)) sumWeightedO += weight * componentO;
+                        if (!isNaN(componentM)) sumWeightedM += weight * componentM;
+                    }
+                    
+                    // Нормализация для объемного смешивания
+                    if (mixtureType === 'volume' && sumWeights > 0) {
+                        sumWeightedD /= sumWeights;
+                        sumWeightedC /= sumWeights;
+                        sumWeightedO /= sumWeights;
+                        sumWeightedM /= sumWeights;
+                    }
+                    
+                    // Установка результатов
+                    D = sumWeightedD;
+                    C = sumWeightedC;
+                    O = sumWeightedO;
+                    M = sumWeightedM;
+                }
+                
+                // Отношение Cp/Cv
+                const ratio = !isNaN(O) && O !== 0 ? C / O : NaN;
+                
+                // Отображение результатов
+                document.getElementById('mixture-result-T').textContent = isNaN(T) ? "Н/Д" : T.toFixed(2) + " K";
+                document.getElementById('mixture-result-P').textContent = isNaN(P) ? "Н/Д" : (P < 1000 ? P.toFixed(2) : (P / 1000).toFixed(2) + " кПа");
+                document.getElementById('mixture-result-D').textContent = isNaN(D) ? "Н/Д" : D.toFixed(4) + " кг/м³";
+                document.getElementById('mixture-result-M').textContent = isNaN(M) ? "Н/Д" : M.toFixed(6) + " кг/моль";
+                document.getElementById('mixture-result-C').textContent = isNaN(C) ? "Н/Д" : C.toFixed(2) + " Дж/(кг·K)";
+                document.getElementById('mixture-result-O').textContent = isNaN(O) ? "Н/Д" : O.toFixed(2) + " Дж/(кг·K)";
+                document.getElementById('mixture-result-ratio').textContent = isNaN(ratio) ? "Н/Д" : ratio.toFixed(4);
+                
+            } catch (error) {
+                console.error("Ошибка при расчете смеси:", error);
+                alert("Произошла ошибка при расчете свойств смеси. Проверьте выбранные вещества и параметры.");
+            }
+        }
+        
+        // Обработчики событий
+        document.addEventListener('DOMContentLoaded', function() {
+            // Переключение между режимами
+            document.getElementById('btn-pure').addEventListener('click', function() {
+                this.classList.remove('bg-white', 'text-gray-900');
+                this.classList.add('bg-blue-600', 'text-white');
+                document.getElementById('btn-mixture').classList.remove('bg-blue-600', 'text-white');
+                document.getElementById('btn-mixture').classList.add('bg-white', 'text-gray-900');
+                document.getElementById('pure-substances').classList.remove('hidden');
+                document.getElementById('mixture-substances').classList.add('hidden');
+            });
+            
+            document.getElementById('btn-mixture').addEventListener('click', function() {
+                this.classList.remove('bg-white', 'text-gray-900');
+                this.classList.add('bg-blue-600', 'text-white');
+                document.getElementById('btn-pure').classList.remove('bg-blue-600', 'text-white');
+                document.getElementById('btn-pure').classList.add('bg-white', 'text-gray-900');
+                document.getElementById('mixture-substances').classList.remove('hidden');
+                document.getElementById('pure-substances').classList.add('hidden');
+                updateMixtureComposition();
+            });
+            
+            // Кнопки расчета
+            document.getElementById('calculate-pure').addEventListener('click', calculatePureProperties);
+            document.getElementById('calculate-mixture').addEventListener('click', calculateMixtureProperties);
+            
+            // Кнопка добавления компонента
+            document.getElementById('add-component').addEventListener('click', addMixtureComponent);
+            
+            // Обработка изменения типа смешивания
+            document.querySelectorAll('input[name="mixture-type"]').forEach(radio => {
+                radio.addEventListener('change', updateMixtureComposition);
+            });
+        });
     </script>
-
 </body>
-
 </html>
